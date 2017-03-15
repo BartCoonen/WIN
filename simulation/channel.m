@@ -12,6 +12,6 @@ end
 %% Add noise
 P = rms(out).^2;
 P = 10.*log(P); %[dBW]
-%out = awgn(out, SNR, P);
+out = awgn(out, SNR, P);
 dt = t(2) - t(1);
 tout = [t t(end)+dt:dt:t(end)+length(h)*dt];

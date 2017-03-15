@@ -3,13 +3,13 @@ clearvars
 %% Variables
 tmin = 0;
 dt = 0.0000001;
-tmax = 0.001;
+tmax = 0.01;
 fc = 100*10^3; %100 kHz
-fb = 1000; %1000 Hz
-Rb = 50000; %50 kHz
-filter1 = [zeros(1,1000) 0.05 zeros(1,250) 0.02 zeros(1,80) 0];
+fb = 1000; %1002 Hz
+Rb = 1000; %50 kHz
+filter1 = [0 zeros(1,1000) 1 zeros(1,250) 0.4 zeros(1,80) 0.00001];
 filter2 = [zeros(1,1025) 0.2 zeros(1,245) -0.03 zeros(1,28) 0.05];
-SNR = inf; %5; %dB awgn added at the receiver
+SNR = inf; %dB awgn added at the receiver (not completly correct)
 RTLAmp = 10;
 t = tmin:dt:tmax;
 
@@ -22,6 +22,7 @@ bits = Createbitstream(Rb,t);               %Create bitstream
 sBase = createBPSK(t,bits,fb,Rb);           %Create (BPSK) signal
 stransmit = transmit(t,fc,sBase);           %Transmit signal over carrier
 
+
 %% Simulation
 [srec1, t1] = channel(stransmit, filter1, SNR, t);
 [srec2, t2] = channel(stransmit, filter2, SNR, t);
@@ -30,28 +31,42 @@ stransmit = transmit(t,fc,sBase);           %Transmit signal over carrier
 [si2, sq2, ts2] = rtlSim(t2, srec2, fc, RTLAmp);
 
 %% initial nulling
-y1 = double(si1 + 1i*sq1); %Should be done with a wiener deconv like in SDSP project
-y2 = double(si2 + 1i*sq2);
+%y1 = double(si1 + 1i*sq1); %Should be done with a wiener deconv like in SDSP project
+%y2 = double(si2 + 1i*sq2);
 
+%Upsample to simulation sampletime (ZOH-process)
 upSamp = round(1/(dt*2.4e6));
 si1 = double(si1);
 si1 = upsampleZOH(si1,upSamp); %2.4e6 from sampling rate RTL
 sq1 = double(sq1);
 sq1 = upsampleZOH(sq1,upSamp); %2.4e6 from sampling rate RTL
+tup1 = 0:dt:length(si1)*dt-dt;
+si2 = double(si2);
+si2 = upsampleZOH(si2,upSamp); %2.4e6 from sampling rate RTL
+sq2 = double(sq2);
+sq2 = upsampleZOH(sq2,upSamp); %2.4e6 from sampling rate RTL
+tup2 = 0:dt:length(si2)*dt-dt;
 
-H1I = estimate_h(si1,sBase,dt);
-H1Q = estimate_h(sq1,sBase,dt);
-H1 = (H1Q+H1I)/2;
-H2 = estimate_h(y2,stransmit,dt);
-lh1 = length(H1);
-lh2 = length(H2);
+% H1I = estimate_h(si1,sBase,dt);
+% H1Q = estimate_h(sq1,sBase,dt);
+%H1 = (H1Q+H1I)/2;
+% [H1, h1] = estimate_h(si1+1i.*sq1,sBase,t, fc);
+h1 = estimate_h2(si1,sq1,stransmit,fc,tup1);
+h2 = estimate_h2(si2,sq2,stransmit,fc,tup2);
+
+%Zero pad the shorter signal
+lh1 = length(h1);
+lh2 = length(h2);
 if lh1 >= lh2
-    H1(lh2+1:lh1) = [];
+    h2(end+1:length(h1)) = 0;
 else
-    H2(lh1+1:lh2) = [];
+    h1(end+1:length(h2)) = 0;
 end
-P = -H1./H2; %Add extra filter??
+H1 = fft(h1);
+H2 = fft(h2);
+P = -H1./H2;
 p = ifft(P);
+%p = deconvwnr(h1,h2); %-H1./H2; %Add extra filter??
 
 
 %Transmit simultaniously
@@ -63,12 +78,16 @@ stransmitLong = transmit(tnew,fc,sBase);           %Transmit signal over carrier
 lp = length(p);
 lstransmitLong = length(stransmitLong);
 if lp >= lstransmitLong
-    p(lstransmitLong+1:lp) = [];
+    stransmitLong(lstransmitLong+1:lp) = zeros(1,lp-lstransmitLong);
 else
-    stransmitLong(lp+1:lstransmitLong) = [];
+    p(lp+1:lstransmitLong) = zeros(1,lstransmitLong-lp);
 end
+P = fft(p);
+StransmitLong = fft(stransmitLong);
+Stransmit2 = P.*StransmitLong;
+stransmit2 = ifft(Stransmit2);
 t2in = [t t(end)+dt:dt:length(p)*dt-dt];
-[srec2, t2] = channel(p.*stransmitLong, filter2, SNR, t2in);
+[srec2, t2] = channel(stransmit2, filter2, SNR, t2in);
 
 if length(srec1) >= length(srec2)
     srec2(end+1:length(srec1)) = 0;
@@ -82,9 +101,9 @@ srec = srec1 + srec2;
 %% plot s to t and plot s in f domain
 figure
 %subplot(2,1,1)
-plot(ts,si);
+plot(filter1);
 hold on
-plot(ts,sq);
+plot(h1);
 % subplot(2,1,2)
 % fmin = -(length(t)-1)/2;
 % fmax = (length(t)-1)/2;

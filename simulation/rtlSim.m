@@ -10,15 +10,19 @@ sr = exp(-1i*2*pi*fcar*t+phase).*s;  %Shift the frequency to the left so that f0
 
 
 %% Low pass filter
-N   = length(t);        % FIR filter order
+N   = length(t);        
 fsampleSim = 1/(t(2) - t(1));
 
-[filterCoefb, filterCoefa] = fir1(10,2*fs/fsampleSim);
-filter = freqz(filterCoefb, filterCoefa, length(t));
-Filter = fft(filter)./length(t);
-
+% [filterCoefb, filterCoefa] = fir1(10, 2*fs/fsampleSim);
+[filterCoefb, filterCoefa] = fir1(100, 0.01);
+Filter = freqz(filterCoefb, filterCoefa, floor(length(t)/2));
+if rem(length(t),2)
+    Filter = [fliplr(Filter') 1 Filter'];
+else
+    Filter = [fliplr(Filter') Filter'];
+end
 Sr = fft(sr);
-Sr = Sr.*Filter';
+Sr = Sr.*ifftshift(Filter);
 sr = ifft(Sr);
 
 %% Quantizer

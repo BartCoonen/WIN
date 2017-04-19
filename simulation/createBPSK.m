@@ -1,10 +1,10 @@
 function [out] = createBPSK(t, bitStream, fbase, Rb)
 %createBPSK only works if 1/(Rb*dt) is an integer
 dt = t(2) - t(1);
-bitLength = round(1/(Rb*dt));
+bitLength = ceil(1/(Rb*dt));
 
 %expand bitstream
-bitStream2(1) = 1;
+bitStream2(1) = 0;
 for i = 1:length(bitStream)
     bitStream2 = [bitStream2; ones(bitLength,1).*bitStream(i)];
 end
